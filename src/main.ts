@@ -1,10 +1,8 @@
 import * as core from '@actions/core';
-import * as github from '@actions/github';
-
 import * as tmp from 'tmp';
+
 import execa = require('execa');
 
-import {CheckRunner} from './check';
 import * as input from './input';
 
 /**
@@ -15,21 +13,16 @@ import * as input from './input';
 const {GITHUB_TOKEN, GITHUB_WORKSPACE} = process.env;
 
 export async function run(actionInput: input.Input): Promise<void> {
-  const startedAt = new Date().toISOString();
-  const alertResp = await execa('vale', actionInput.args);
-
-  let runner = new CheckRunner();
-  runner.makeAnnotations(alertResp.stdout);
-
-  await runner.executeCheck({
-    token: actionInput.token,
-    name: 'Vale',
-    owner: github.context.repo.owner,
-    repo: github.context.repo.repo,
-    head_sha: github.context.sha,
-    started_at: startedAt,
-    context: {vale: actionInput.version}
-  });
+  const alertResp = await execa('vale', actionInput.args  );
+  // NOTE: GitHub Actions currently only support 'warning' and 'error', so we
+  // convert 'suggestion' to 'warning'.
+  //
+  // TODO: Is there a better way to handle this?
+  var converted = alertResp.stdout.replace(/suggestion/g, 'warning');
+  if (converted.length == 0) {
+    converted = alertResp.stderr.replace(/suggestion/g, 'warning');
+  }
+  core.info(converted);
 }
 
 async function main(): Promise<void> {
