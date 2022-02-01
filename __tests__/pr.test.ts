@@ -38,7 +38,7 @@ describe('Get modified lines from a PR', () => {
   });
 
   it('should get modified lines from a commit', async () => {
-    const resp = await gh.repos.getCommit({
+    const resp = await gh.rest.repos.getCommit({
       owner: 'vaadin',
       repo: 'docs',
       ref: '6fbb4e7b5baceb4d6a966ddb5ecdf2bb0349ebb8'
@@ -47,7 +47,7 @@ describe('Get modified lines from a PR', () => {
     let lines = parsePatch(resp.data.files[0].patch);
     expect(lines).toEqual([15]);
 
-    const resp2 = await gh.repos.getCommit({
+    const resp2 = await gh.rest.repos.getCommit({
       owner: 'vaadin',
       repo: 'docs',
       ref: 'a8837d2633b7d881b3cff19465b3b4a73779a816'
@@ -56,7 +56,7 @@ describe('Get modified lines from a PR', () => {
     lines = parsePatch(resp2.data.files[0].patch);
     expect(lines).toEqual([]);
 
-    const resp3 = await gh.repos.getCommit({
+    const resp3 = await gh.rest.repos.getCommit({
       owner: 'vaadin',
       repo: 'docs',
       ref: '85d8acaad6153bf4caf216f6bfa2f3d748d5bd24'
@@ -64,7 +64,7 @@ describe('Get modified lines from a PR', () => {
     lines = parsePatch(resp3.data.files[0].patch);
     expect(lines).toEqual([8, 10, 18]);
 
-    const resp4 = await gh.repos.getCommit({
+    const resp4 = await gh.rest.repos.getCommit({
       owner: 'vaadin',
       repo: 'docs',
       ref: '0c5ad68ca57702671cccd31f64e9438a5e387834'
@@ -76,7 +76,7 @@ describe('Get modified lines from a PR', () => {
     lines = parsePatch(resp4.data.files[1].patch);
     expect(lines).toEqual([1, 2, 3, 4]);
 
-    const resp5 = await gh.repos.getCommit({
+    const resp5 = await gh.rest.repos.getCommit({
       owner: 'vaadin',
       repo: 'docs',
       ref: '2789506b19bd26106717e70ed609dee1e2e398fb'

@@ -1,20 +1,33 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
+import {Api} from '@octokit/plugin-rest-endpoint-methods/dist-types/types'
 
 import {wasLineAddedInPR, GHFile} from './git';
 
 const pkg = require('../package.json');
 const USER_AGENT = `${pkg.name}/${pkg.version} (${pkg.bugs.url})`;
 
-type ChecksCreateParamsOutputAnnotations = any;
-type Severity = 'suggestion' | 'warning' | 'error';
+export type CheckAnnotationLevel = 'notice' | 'warning' | 'failure';
+
+export interface CheckAnnotation {
+  path: string;
+  start_line: number;
+  end_line: number;
+  start_column: number;
+  end_column: number;
+  annotation_level: CheckAnnotationLevel;
+  title: string;
+  message: string;
+}
+
+type AlertSeverity = 'suggestion' | 'warning' | 'error';
 
 interface Alert {
   readonly Check: string;
   readonly Line: number;
   readonly Message: string;
   readonly Span: [number, number];
-  readonly Severity: Severity;
+  readonly Severity: AlertSeverity;
 }
 
 interface ValeJSON {
@@ -39,20 +52,22 @@ interface CheckOptions {
   };
 }
 
-const onlyAnnotateModifiedLines =
-  core.getInput('onlyAnnotateModifiedLines') != 'false';
-
 /**
  * CheckRunner handles all communication with GitHub's Check API.
  *
  * See https://developer.github.com/v3/checks.
  */
 export class CheckRunner {
-  private annotations: Array<ChecksCreateParamsOutputAnnotations>;
+  private annotations: Array<CheckAnnotation>;
   private stats: Stats;
   private modified: Record<string, GHFile>;
+  private onlyAnnotateModifiedLines: boolean;
 
-  constructor(modified: Record<string, GHFile>) {
+  constructor(
+    modified: Record<string, GHFile>,
+    output: string,
+    onlyAnnotateModifiedLines: boolean = false
+  ) {
     this.annotations = [];
     this.stats = {
       suggestions: 0,
@@ -60,17 +75,22 @@ export class CheckRunner {
       errors: 0
     };
     this.modified = modified;
+    this.onlyAnnotateModifiedLines = onlyAnnotateModifiedLines;
+
+    if (output) {
+      this.makeAnnotations(output);
+    }
   }
 
   /**
    * Convert Vale's JSON `output` into an array of annotations.
    */
-  public makeAnnotations(output: string): void {
+  private makeAnnotations(output: string): void {
     const alerts = JSON.parse(output) as ValeJSON;
     for (const filename of Object.getOwnPropertyNames(alerts)) {
       for (const alert of alerts[filename]) {
         if (
-          onlyAnnotateModifiedLines &&
+          this.onlyAnnotateModifiedLines &&
           !wasLineAddedInPR(this.modified[filename], alert.Line)
         ) {
           continue;
@@ -91,6 +111,10 @@ export class CheckRunner {
         this.annotations.push(CheckRunner.makeAnnotation(filename, alert));
       }
     }
+  }
+
+  public getAnnotations(): CheckAnnotation[] {
+    return this.annotations;
   }
 
   /**
@@ -147,10 +171,10 @@ export class CheckRunner {
    * See https://developer.github.com/v3/checks/runs/#create-a-check-run.
    */
   private async createCheck(
-    client: any,
+    client: Api,
     options: CheckOptions
   ): Promise<number> {
-    const response = await client.checks.create({
+    const response = await client.rest.checks.create({
       owner: options.owner,
       repo: options.repo,
       name: options.name,
@@ -170,7 +194,7 @@ export class CheckRunner {
    * multiple "buckets" if we have more than 50.
    */
   private async runUpdateCheck(
-    client: any,
+    client: Api,
     checkRunId: number,
     options: CheckOptions
   ): Promise<void> {
@@ -199,7 +223,7 @@ export class CheckRunner {
         req.completed_at = new Date().toISOString();
       }
 
-      const response = await client.checks.update(req);
+      const response = await client.rest.checks.update(req);
       if (response.status != 200) {
         core.warning(`[updateCheck] Unexpected status code ${response.status}`);
       }
@@ -214,7 +238,7 @@ export class CheckRunner {
    * Indicate that no alerts were found.
    */
   private async successCheck(
-    client: any,
+    client: Api,
     checkRunId: number,
     options: CheckOptions
   ): Promise<void> {
@@ -233,7 +257,7 @@ export class CheckRunner {
       }
     };
 
-    const response = await client.checks.update(req);
+    const response = await client.rest.checks.update(req);
     if (response.status != 200) {
       core.warning(`[successCheck] Unexpected status code ${response.status}`);
     }
@@ -245,7 +269,7 @@ export class CheckRunner {
    * Something went wrong; cancel the check run and report the exception.
    */
   private async cancelCheck(
-    client: any,
+    client: Api,
     checkRunId: number,
     options: CheckOptions
   ): Promise<void> {
@@ -265,7 +289,7 @@ export class CheckRunner {
       }
     };
 
-    const response = await client.checks.update(req);
+    const response = await client.rest.checks.update(req);
     if (response.status != 200) {
       core.warning(`[cancelCheck] Unexpected status code ${response.status}`);
     }
@@ -290,8 +314,8 @@ export class CheckRunner {
    *
    * See https://developer.github.com/v3/checks/runs/#output-object.
    */
-  private getBucket(): Array<ChecksCreateParamsOutputAnnotations> {
-    let annotations: Array<ChecksCreateParamsOutputAnnotations> = [];
+  private getBucket(): Array<CheckAnnotation> {
+    let annotations: Array<CheckAnnotation> = [];
     while (annotations.length < 50) {
       const annotation = this.annotations.pop();
       if (annotation) {
@@ -343,6 +367,18 @@ export class CheckRunner {
     );
   }
 
+  public anyErrors(): boolean {
+    return this.stats.errors > 0;
+  }
+
+  public anyWarnings(): boolean {
+    return this.stats.warnings > 0;
+  }
+
+  public anySuggestions(): boolean {
+    return this.stats.suggestions > 0;
+  }
+
   /**
    * Convert Vale-formatted JSON object into an array of annotations:
    *
@@ -368,10 +404,10 @@ export class CheckRunner {
    * See https://developer.github.com/v3/checks/runs/#annotations-object.
    */
   static makeAnnotation(
-    name: string,
+    filename: string,
     alert: Alert
-  ): ChecksCreateParamsOutputAnnotations {
-    let annotation_level: ChecksCreateParamsOutputAnnotations['annotation_level'];
+  ): CheckAnnotation {
+    let annotation_level: CheckAnnotation['annotation_level'];
 
     switch (alert.Severity) {
       case 'suggestion':
@@ -385,8 +421,8 @@ export class CheckRunner {
         break;
     }
 
-    let annotation: ChecksCreateParamsOutputAnnotations = {
-      path: name,
+    let annotation: CheckAnnotation = {
+      path: filename,
       start_line: alert.Line,
       end_line: alert.Line,
       start_column: alert.Span[0],
@@ -397,5 +433,16 @@ export class CheckRunner {
     };
 
     return annotation;
+  }  
+}
+
+export function toAnnotationProperties(annotation: CheckAnnotation): core.AnnotationProperties {
+  return {
+    title: annotation.title,
+    file: annotation.path,
+    startLine: annotation.start_line,
+    endLine: annotation.end_line,    
+    startColumn: annotation.start_column,
+    endColumn: annotation.end_column
   }
 }
