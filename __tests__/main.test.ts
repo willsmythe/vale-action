@@ -23,7 +23,7 @@ describe('GitHub API usage', () => {
 
     await Promise.all(
       resp2.data.map(async commit => {
-        const resp3 = await gh.repos.getCommit({
+        const resp3 = await gh.rest.repos.getCommit({
           owner: 'errata-ai',
           repo: 'vale',
           ref: commit.sha
@@ -34,7 +34,7 @@ describe('GitHub API usage', () => {
   });
 
   it('should get modified lines from a commit', async () => {
-    const resp = await gh.repos.getCommit({
+    const resp = await gh.rest.repos.getCommit({
       owner: 'errata-ai',
       repo: 'vale',
       // https://github.com/errata-ai/vale/commit/b698b7e3f61a5730adfb6b02281de7f6268d2822
@@ -48,7 +48,7 @@ describe('GitHub API usage', () => {
   });
 
   it('should get modified lines from a commit', async () => {
-    const resp = await gh.repos.getCommit({
+    const resp = await gh.rest.repos.getCommit({
       owner: 'errata-ai',
       repo: 'vale',
       // https://github.com/errata-ai/vale/pull/279

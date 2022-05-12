@@ -36,17 +36,17 @@ export async function modifiedFiles(): Promise<GHFile[]> {
 
     await Promise.all(
       commits.map(async commit => {
-        const resp = await API.repos.getCommit({
+        const resp = await API.rest.repos.getCommit({
           owner: name!,
           repo: repo.name,
           ref: commit
         });
 
-        resp.data.files.forEach(file => {
+        resp.data.files!.forEach(file => {
           if (file.status == 'modified' || file.status == 'added') {
             let entry: GHFile = {
-              name: file.filename,
-              patch: file.patch,
+              name: file.filename!,
+              patch: file.patch!,
               sha: commit
             };
             files.push(entry);
@@ -95,7 +95,7 @@ async function getCommits(): Promise<string[]> {
         const resp = await API.request('GET /repos/{owner}/{repo}/pulls/{pull_number}/commits', {
           owner: CTX.repo.owner,
           repo: CTX.repo.repo,
-          pull_number: process.env.OVERRIDE_PR_NUMBER
+          pull_number: process.env.OVERRIDE_PR_NUMBER as any
         })
 
         resp.data.forEach((commit: { sha: string }) => {

@@ -24,6 +24,11 @@ inputs:
     required: false
     default: 'false'
 
+  reportStatusInRun:
+    description: Post annotations in the workflow run and fail the step if any errors are reported.
+    required: false
+    default: 'false'
+
   debug:
     description: 'Log debugging information to stdout'
     required: false
@@ -37,4 +42,5 @@ runs:
     - ${{ inputs.config }}
     - ${{ inputs.files }}
     - ${{ inputs.onlyAnnotateModifiedLines }}
+    - ${{ inputs.reportStatusInRun }}
     - ${{ inputs.debug }}
